@@ -230,6 +230,14 @@ build for that. Concretely:
   `output/.../` so I can `tail -f`. Do not let real work print only to a
   detached pane (lesson learned: vLLM logged but the experiment driver didn't).
 - Long jobs print periodic progress (step/sample/ETA), not just start/end.
+- **Local jobs (NOT cluster/SLURM jobs) MUST be launched detached with `setsid`**
+  so they survive a Claude Code session teardown, e.g.
+  `setsid bash -c 'CUDA_VISIBLE_DEVICES=N python ... > run.log 2>&1' </dev/null &`.
+  Harness background jobs are children of the session process and get killed
+  when it restarts (lesson learned: a 6-GPU decoder sweep was reaped mid-run).
+  Since setsid daemons aren't harness-tracked, there's no completion
+  notification — poll the log. Cluster jobs (sbatch/SLURM) are already detached,
+  so this applies ONLY to local runs.
 
 ### Make data explorable
 - ALWAYS write results to a compact, COMPLETE markdown file alongside any rich
@@ -253,3 +261,11 @@ build for that. Concretely:
   don't dump everything flat into one folder.
 - Keep README current with: how to run, where results land, how to read the
   dashboard.
+
+### Remote server mount (READ-ONLY)
+- `*-mount/` (sshfs directories) are clones of this repo on different compute cluster servers, mounted so you can inspect artifacts (checkpoints, slurm logs, samples, eval JSONs, dataset state).
+- NEVER update code inside these directories. The workflow is strictly:
+  1. test updates/changes HERE (local GPUs),
+  2. make code changes HERE,
+  3. push to GitHub,
+  4. THE USER pulls on the server and runs commands there.
