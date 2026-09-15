@@ -269,3 +269,40 @@ build for that. Concretely:
   2. make code changes HERE,
   3. push to GitHub,
   4. THE USER pulls on the server and runs commands there.
+
+## Compute
+
+Most of the experiments and development should be done on the local machine (h82). Bigger experiments (requiring more GPU memory / RAM) or launching many jobs at once should be run on the cluster, usually referred to as `pwr` or `WCSS`.
+
+### h82 — local, interactive
+- 8x NVIDIA RTX A5000, **24 GB each**, driver 595.84. Bash/ssh directly, no scheduler.
+- Storage: `/nas` (91 TB volume, NFS). Code in `/nas/lstanisz/code/`.
+- Use for: writing code, smoke runs, unit tests, anything under ~20 GB of GPU memory.
+- Local background jobs MUST use `setsid` so they survive a Claude Code session teardown.
+
+### pwr / WCSS / LEM — slurm, large GPUs
+- Login node `ui.wcss.pl`, Slurm. Inspected read-only via `pwr-mount/`.
+- 76x Dell PowerEdge XE9640 GPU nodes: **4x NVIDIA H100 96 GB**, 2x Xeon Platinum
+  8462Y (32 cores), 1006 GB RAM, Infiniband NDR200 4x 200 Gbps.
+- Use for: anything needing >24 GB GPU, long runs, array sweeps.
+- **Writing Slurm jobs for WCSS**:
+  - Claude writes the sbatch script, the USER submits it. 
+  - Every script must be right on the first submit — there is no fast debug loop on the cluster.
+  - Example boilerplate that works on WCSS:
+```bash
+#!/bin/bash -l
+#SBATCH --nodes=1
+#SBATCH --ntasks-per-node=1
+#SBATCH --cpus-per-task=12
+#SBATCH --mem=200G
+#SBATCH --time=04:00:00
+#SBATCH --partition=lem-gpu
+#SBATCH --gres=gpu:hopper:1
+
+module load Python/3.10.4-GCCcore-11.3.0
+cd "${SLURM_SUBMIT_DIR:-$PWD}"
+export PYTHONPATH=$PWD
+source .venv/bin/activate # via uv
+```
+  - Job arrays: `AssocMaxSubmitJobLimit` trips above roughly **108 tasks per submit**. Chunk larger sweeps: `--array=0-107`, then `--array=108-215`, ...).
+  - Parameterize arrays via a manifest TSV read by `SLURM_ARRAY_TASK_ID`, not by encoding parameters in the script.
